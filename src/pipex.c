@@ -3,27 +3,60 @@
 /*                                                        :::      ::::::::   */
 /*   pipex.c                                            :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: wcollen <wcollen@student.42.fr>            +#+  +:+       +#+        */
+/*   By: wcollen <wcollen@student.21-school.ru>     +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2022/02/16 14:53:15 by wcollen           #+#    #+#             */
-/*   Updated: 2022/02/21 18:52:20 by wcollen          ###   ########.fr       */
+/*   Updated: 2022/03/09 23:22:30 by wcollen          ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "pipex.h"
 
-void	error_exit(const char *str)
+void	child_proc1(int *fds, char **arv, char **env)
 {
-	perror(str);
-	exit(1);
+	int	filein;
+
+	filein = open(arv[0], O_RDONLY, 0644);
+	if (filein != -1)
+	{
+		dup2(filein, STDIN_FILENO);
+		dup2(fds[1], STDOUT_FILENO);
+		close(fds[0]);
+		close(filein);
+		close(fds[1]);
+		execute_command(arv[1], env);
+	}
+	else
+	{
+		close(fds[0]);
+		close(fds[1]);
+		error_exit(arv[0]);
+	}	
 }
 
-void	child_proc1()
+void	child_proc2(int *fds, char **arv, char **env, int arc)
 {
+	int	fileout;
 
+	fileout = open(arv[arc - 1], O_WRONLY + O_TRUNC + O_CREAT, 0644);
+	if (fileout != -1)
+	{
+		dup2(fileout, STDOUT_FILENO);
+		dup2(fds[0], STDIN_FILENO);
+		close(fds[1]);
+		close(fds[0]);
+		close(fileout);
+		execute_command(arv[arc - 2], env);
+	}
+	else
+	{
+		close(fds[1]);
+		close(fds[0]);
+		error_exit(arv[arc]);
+	}	
 }
 
-void	pipex()
+void	pipex(int arc, char **arv, char **env)
 {
 	int		fds[2];
 	pid_t	pid1;
@@ -34,35 +67,28 @@ void	pipex()
 	pid1 = fork();
 	if (pid1 == -1)
 		error_exit("Fork error");
-	child_proc1();
-	
-
-
+	if (pid1 == 0)
+		child_proc1(fds, arv, env);
+	pid2 = fork();
+	if (pid2 == -1)
+		error_exit("Fork error");
+	if (pid2 == 0)
+		child_proc2(fds, arv, env, arc);
+	close(fds[0]);
+	close(fds[1]);
+	if (waitpid(pid1, NULL, 0) == -1)
+		error_exit("Waitpid pid1 error");
+	if (waitpid(pid2, NULL, 0) == -1)
+		error_exit("Waitpid pid2 error");
 }
 
-//При успехе pipe возвращает значение 0. При отказе, -1
 int	main(int argc, char **argv, char **env)
 {
-	pid_t	pid;
-	int		in;
-	int		out;
-
 	if (argc != 5)
-		return (0);
-	
-	/* Создаем дочерний процесс. */
-	pid = fork();
-	if (pid == (pid_t)0)//дочерний процесс создался
 	{
-		//чтение из pipe
-		// read_from_pipe (mypipe[0]);
-        // return EXIT_SUCCESS;
-	}
-	else if (pid < (pid_t) 0)
-	{
-		//perror("fork"); /* произошла ошибка */
-		write (1, "fork error", 10);
-		exit(1); /*выход из родительского процесса*/
-	}
-	
+		write(1, "Wrong arguments number\n", 23);
+		return (1);
+	}		
+	pipex(argc - 1, &argv[1], env);
+	return (0);
 }
